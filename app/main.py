@@ -69,3 +69,50 @@ print("Aplicação FastAPI (app_fastapi) em app/main.py conceitualmente definida
 # #     print("AVISO: Instância FastAPI (app_fastapi) não parece estar definida para aplicar Security Headers.")
 
 print("Comentários sobre CORS, Rate Limiting, Security Headers adicionados/atualizados conceitualmente em app/main.py.")
+
+# # SETUP INICIAL DE LOGGING (já comentado em etapa anterior, apenas para contexto)
+# # from app.core.logging_config import setup_logging
+# # setup_logging() # Chamada para configurar os loggers
+# # import logging
+# # main_logger = logging.getLogger(__name__)
+# # main_logger.info("Serviço FastAPI iniciado e logging configurado.", extra={"event_type": "startup"})
+
+# # MIDDLEWARE CONCEITUAL PARA LOGGING DE REQUISIÇÕES
+# # from fastapi import Request, Response
+# # import time
+# # @app_fastapi.middleware("http")
+# # async def log_request_middleware(request: Request, call_next):
+# #     correlation_id = request.headers.get("X-Correlation-ID") # Ou gerar um novo
+# #     client_ip = request.client.host if request.client else "unknown"
+# #     # main_logger.info(
+# #     #     f"Requisição recebida: {request.method} {request.url.path}",
+# #     #     extra={
+# #     #         "correlation_id": correlation_id, "client_ip": client_ip,
+# #     #         "http_method": request.method, "endpoint": request.url.path,
+# #     #         "user_agent": request.headers.get("user-agent")
+# #     #     }
+# #     # )
+# #     # start_time = time.time()
+# #     # response = await call_next(request)
+# #     # process_time_ms = (time.time() - start_time) * 1000
+# #     # main_logger.info(
+# #     #     f"Requisição finalizada: {request.method} {request.url.path} com status {response.status_code}",
+# #     #     extra={
+# #     #         "correlation_id": correlation_id, "client_ip": client_ip,
+# #     #         "http_method": request.method, "endpoint": request.url.path,
+# #     #         "http_status_code": response.status_code, "duration_ms": round(process_time_ms, 2)
+# #     #     }
+# #     # )
+# #     # return response
+
+# # No endpoint /healthz (atualizar o existente ou adicionar comentários)
+# # async def health_check_endpoint(request: Request): # Adicionar request: Request para pegar headers
+# #     # logger_main.info("Endpoint /healthz chamado.", extra={"correlation_id": request.headers.get("X-Correlation-ID")})
+# #     # ... lógica do health check ...
+# #     # health_status = {"status": "healthy", "dependencies": {"redis": "ok", "celery": "ok"}} # Exemplo
+# #     # logger_main.debug(f"Verificação Redis: {health_status['dependencies']['redis']}", extra={"correlation_id": request.headers.get("X-Correlation-ID")})
+# #     # logger_main.info(f"Resultado do Health Check: {health_status['status']}", extra={"correlation_id": request.headers.get("X-Correlation-ID")})
+# #     # return health_status
+# #     pass # Apenas para estrutura
+
+print("Comentários de logging conceitual adicionados/atualizados em app/main.py.")
