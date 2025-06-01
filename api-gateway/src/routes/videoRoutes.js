@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const videoController = require('../controllers/videoController');
 const validateUrl = require('../middleware/urlValidator');
+const { validateTaskId } = require('../middleware/urlValidator');
 
 // Rota para obter informações do vídeo
 router.get('/info', validateUrl, videoController.getVideoInfo);
@@ -13,9 +14,12 @@ router.get('/options', validateUrl, videoController.getDownloadOptions);
 router.post('/download', validateUrl, videoController.startDownload);
 
 // Rota para verificar status da tarefa
-router.get('/task/:taskId', videoController.checkTaskStatus);
+router.get('/task/:taskId', validateTaskId, videoController.checkTaskStatus);
 
 // Rota para obter URL de download
-router.get('/download/:taskId', videoController.getDownloadUrl);
+router.get('/download/:taskId', validateTaskId, videoController.getDownloadUrl);
+
+// Rota adicional para verificar status (compatibilidade com frontend)
+router.get('/status/:taskId', validateTaskId, videoController.checkTaskStatus);
 
 module.exports = router; 

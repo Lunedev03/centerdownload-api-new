@@ -34,6 +34,7 @@ import {
   startDownload,
   checkTaskStatus,
   getDownloadUrl,
+  validateUrl,
   type DownloadOption, 
   type VideoPreview,
   mockOptions, 
@@ -73,6 +74,12 @@ export default function DownloadPage() {
       try {
         setLoading(true);
         setError(null);
+        
+        // Validar URL antes de fazer requisições
+        const validation = validateUrl(url);
+        if (!validation.isValid) {
+          throw new Error(validation.message || 'URL inválida');
+        }
         
         // Buscar informações do vídeo e opções de download da API
         const videoData = await fetchVideoInfo(url);
@@ -223,15 +230,31 @@ export default function DownloadPage() {
       
       // Extrair mensagem de erro mais específica
       let errorMessage = "Ocorreu um erro ao processar seu download. Tente novamente mais tarde.";
+      let errorTitle = "Erro ao processar download";
       
       if (error instanceof Error) {
         errorMessage = error.message;
+        
+        // Tratamento específico para erros conhecidos
+        if (errorMessage.includes("validation error") || errorMessage.includes("Dados de requisição inválidos")) {
+          errorTitle = "Erro de validação";
+          errorMessage = "Os dados fornecidos são inválidos. Por favor, verifique a URL e tente novamente.";
+        } else if (errorMessage.includes("UNSUPPORTED_URL") || errorMessage.includes("URL não suportada")) {
+          errorTitle = "URL não suportada";
+          errorMessage = "Esta URL não é suportada. Por favor, use uma URL de uma das plataformas suportadas.";
+        } else if (errorMessage.includes("TIMEOUT") || errorMessage.includes("tempo limite")) {
+          errorTitle = "Tempo limite excedido";
+          errorMessage = "O servidor demorou muito para responder. Por favor, tente novamente mais tarde.";
+        } else if (errorMessage.includes("CONNECTION_ERROR") || errorMessage.includes("conectar com o serviço")) {
+          errorTitle = "Erro de conexão";
+          errorMessage = "Não foi possível conectar com o servidor. Verifique sua conexão e tente novamente.";
+        }
       }
       
       setError(errorMessage);
       
       toast({
-        title: "Erro ao processar download",
+        title: errorTitle,
         description: errorMessage,
         variant: "destructive",
       });
@@ -260,9 +283,26 @@ export default function DownloadPage() {
     } catch (error) {
       console.error('Erro ao obter URL de download:', error);
       
+      // Extrair mensagem de erro mais específica
+      let errorMessage = "Ocorreu um erro ao tentar baixar o arquivo.";
+      let errorTitle = "Erro ao baixar arquivo";
+      
+      if (error instanceof Error) {
+        errorMessage = error.message;
+        
+        // Tratamento específico para erros conhecidos
+        if (errorMessage.includes("não está concluída")) {
+          errorTitle = "Download não concluído";
+          errorMessage = "O arquivo ainda não está pronto para download. Por favor, aguarde o processamento ser concluído.";
+        } else if (errorMessage.includes("não está disponível")) {
+          errorTitle = "Arquivo indisponível";
+          errorMessage = "O arquivo de download não está disponível. O processamento pode ter falhado.";
+        }
+      }
+      
       toast({
-        title: "Erro ao baixar arquivo",
-        description: error instanceof Error ? error.message : "Ocorreu um erro ao tentar baixar o arquivo.",
+        title: errorTitle,
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {

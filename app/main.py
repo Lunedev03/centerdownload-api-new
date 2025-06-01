@@ -5,9 +5,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 import os
 import logging
-import random
 import json
+import random
 from typing import Dict, List, Optional, Any
+from app.routes import api_router
 
 # Configurar logging
 logging.basicConfig(
@@ -36,11 +37,20 @@ app_fastapi.add_middleware(
 # Criar pasta para downloads se não existir
 os.makedirs("app/download", exist_ok=True)
 
+# Incluir as rotas da API
+app_fastapi.include_router(api_router, prefix="/api/v1")
+
 # Rotas básicas
 @app_fastapi.get("/api/v1/health", tags=["Health Check"], status_code=status.HTTP_200_OK)
 async def health_check():
     logger.info("Health check executado")
-    return {"status": "healthy", "service": "video-downloader-api"}
+    return {
+        "success": True,
+        "data": {
+            "status": "healthy",
+            "service": "video-downloader-api"
+        }
+    }
 
 @app_fastapi.get("/api/v1/video/info", tags=["Video"])
 async def get_video_info(url: str):
@@ -54,6 +64,7 @@ async def get_video_info(url: str):
     
     # Implementação futura - por enquanto retorna dados de exemplo
     return {
+        "success": True,
         "data": {
             "title": "Vídeo de exemplo",
             "thumbnailUrl": "https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=600&auto=format&fit=crop",
@@ -73,29 +84,36 @@ async def get_video_options(url: str):
     
     logger.info(f"Solicitando opções de download para URL: {url}")
     
-    # Implementação futura - por enquanto retorna dados de exemplo
+    # Implementação futura - por enquanto retorna dados de exemplo com tamanhos em bytes
+    # Os tamanhos são fornecidos como números (bytes) para serem processados pelo frontend e API Gateway
     return {
+        "success": True,
         "data": [
-            {"quality": "4K", "format": "MP4", "size": "2.1 GB", "type": "video"},
-            {"quality": "1080p", "format": "MP4", "size": "850 MB", "type": "video", "recommended": True},
-            {"quality": "720p", "format": "MP4", "size": "450 MB", "type": "video"},
-            {"quality": "480p", "format": "MP4", "size": "250 MB", "type": "video"},
-            {"quality": "360p", "format": "MP4", "size": "150 MB", "type": "video"},
-            {"quality": "High", "format": "MP3", "size": "8 MB", "type": "audio", "recommended": True},
-            {"quality": "Medium", "format": "MP3", "size": "5 MB", "type": "audio"}
+            {"quality": "4K", "format": "MP4", "size": 2256000000, "type": "video"},  # ~2.1 GB
+            {"quality": "1080p", "format": "MP4", "size": 891289600, "type": "video", "recommended": True},  # ~850 MB
+            {"quality": "720p", "format": "MP4", "size": 471859200, "type": "video"},  # ~450 MB
+            {"quality": "480p", "format": "MP4", "size": 262144000, "type": "video"},  # ~250 MB
+            {"quality": "360p", "format": "MP4", "size": 157286400, "type": "video"},  # ~150 MB
+            {"quality": "High", "format": "MP3", "size": 8388608, "type": "audio", "recommended": True},  # ~8 MB
+            {"quality": "Medium", "format": "MP3", "size": 5242880, "type": "audio"}  # ~5 MB
         ]
     }
 
 @app_fastapi.post("/api/v1/video/download", tags=["Video"])
 async def start_download(request: Request):
     try:
+        # Ler o corpo da requisição
         data = await request.json()
-        url = data.get('url')
         
-        if not url:
+        # Validar usando o modelo Pydantic
+        try:
+            from app.models.request_schemas import DownloadRequest
+            request_data = DownloadRequest(**data)
+            url = str(request_data.video_url)
+        except Exception as validation_error:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="URL não fornecida"
+                detail=f"Dados de requisição inválidos: {str(validation_error)}"
             )
         
         logger.info(f"Iniciando download para URL: {url}")
@@ -104,6 +122,7 @@ async def start_download(request: Request):
         task_id = f"mock-task-{abs(hash(url)) % 10000}"
         
         return {
+            "success": True,
             "data": {
                 "task_id": task_id,
                 "status": "pending"
@@ -137,7 +156,10 @@ async def check_task_status(task_id: str):
     elif status_value == "failed":
         response["error"] = "Erro simulado durante o download"
     
-    return {"data": response}
+    return {
+        "success": True,
+        "data": response
+    }
 
 @app_fastapi.get("/api/v1/download/{task_id}", tags=["Video"])
 async def download_file(task_id: str):
@@ -150,35 +172,64 @@ async def download_file(task_id: str):
     
     logger.info(f"Solicitando download do arquivo para tarefa: {task_id}")
     
-    # Para demonstração, criar um arquivo de texto temporário
-    file_path = os.path.join("app", "download", f"{task_id}.txt")
+    # Verificar se existe um arquivo de tarefa para o task_id
+    task_file = os.path.join("app", "download", f"{task_id}.json")
     
-    # Verificar se o arquivo já existe, se não, criar um arquivo de exemplo
-    if not os.path.exists(file_path):
-        with open(file_path, "w", encoding="utf-8") as f:
-            f.write(f"Este é um arquivo de exemplo para a tarefa {task_id}.\n")
-            f.write("Em uma implementação real, este seria o vídeo ou áudio baixado.\n")
+    if not os.path.exists(task_file):
+        logger.warning(f"Tentativa de download para tarefa inexistente: {task_id}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Tarefa {task_id} não encontrada"
+        )
     
-    # Gerar um nome de arquivo mais amigável
-    download_filename = f"download-{task_id}.txt"
-    
-    # Em uma implementação real, o tipo de arquivo e nome seria determinado pelo formato selecionado
-    # Por exemplo: video-title.mp4 ou audio-title.mp3
-    
-    # Determinar o tipo MIME com base na extensão (em implementação real)
-    media_type = "text/plain"  # Para arquivos de texto em nossa demonstração
-    # Em produção: "video/mp4" para vídeos MP4, "audio/mpeg" para áudios MP3, etc.
-    
-    # FileResponse configura os cabeçalhos necessários para download no navegador:
-    # - Content-Disposition: attachment; filename="nome-do-arquivo.extensao"
-    # - Content-Type: tipo-mime-adequado
-    return FileResponse(
-        path=file_path,
-        filename=download_filename,
-        media_type=media_type,
-        # Force o download como "attachment" para que o navegador baixe em vez de exibir
-        headers={"Content-Disposition": f"attachment; filename=\"{download_filename}\""}
-    )
+    try:
+        # Ler dados da tarefa
+        with open(task_file, "r") as f:
+            task_data = json.load(f)
+        
+        # Verificar se a tarefa está concluída
+        if task_data.get("status") != "completed":
+            logger.warning(f"Tentativa de download para tarefa não concluída: {task_id}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Tarefa {task_id} não está concluída"
+            )
+        
+        # Para demonstração, criar um arquivo de texto temporário
+        output_file = os.path.join("app", "download", f"{task_id}.txt")
+        
+        # Verificar se o arquivo já existe, se não, criar um arquivo de exemplo
+        if not os.path.exists(output_file):
+            with open(output_file, "w", encoding="utf-8") as f:
+                f.write(f"Este é um arquivo de exemplo para a tarefa {task_id}.\n")
+                f.write("Em uma implementação real, este seria o vídeo ou áudio baixado.\n")
+                f.write(f"URL: {task_data.get('download_data', {}).get('video_url', 'N/A')}\n")
+                f.write(f"Formato: {task_data.get('download_data', {}).get('format', 'N/A')}\n")
+        
+        # Gerar um nome de arquivo mais amigável
+        download_filename = f"download-{task_id}.txt"
+        
+        # Em uma implementação real, o tipo de arquivo e nome seria determinado pelo formato selecionado
+        # Por exemplo: video-title.mp4 ou audio-title.mp3
+        
+        # Determinar o tipo MIME com base na extensão (em implementação real)
+        media_type = "text/plain"  # Para arquivos de texto em nossa demonstração
+        # Em produção: "video/mp4" para vídeos MP4, "audio/mpeg" para áudios MP3, etc.
+        
+        # FileResponse configura os cabeçalhos necessários para download no navegador
+        return FileResponse(
+            path=output_file,
+            filename=download_filename,
+            media_type=media_type,
+            # Force o download como "attachment" para que o navegador baixe em vez de exibir
+            headers={"Content-Disposition": f"attachment; filename=\"{download_filename}\""}
+        )
+    except Exception as e:
+        logger.error(f"Erro ao processar download para tarefa {task_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Erro ao processar download: {str(e)}"
+        )
 
 # Manipulador de exceções para toda a aplicação
 @app_fastapi.exception_handler(Exception)
@@ -186,7 +237,11 @@ async def generic_exception_handler(request: Request, exc: Exception):
     logger.error(f"Erro não tratado: {str(exc)}", exc_info=True)
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={"detail": "Ocorreu um erro interno no servidor"}
+        content={
+            "success": False,
+            "message": "Ocorreu um erro interno no servidor",
+            "error": str(exc)
+        }
     )
 
 # Evento de inicialização
