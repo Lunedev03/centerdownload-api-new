@@ -253,6 +253,58 @@ function startNodeApi() {
   return nodeApi;
 }
 
+// Iniciar a aplicação Next.js
+function startNextApp() {
+  console.log('Iniciando aplicação Next.js...');
+  
+  try {
+    // Verificar se o módulo next está instalado
+    const nextBinPath = path.join(process.cwd(), 'node_modules', '.bin', 'next');
+    
+    if (!fs.existsSync(nextBinPath)) {
+      console.warn('Módulo next não encontrado em node_modules/.bin/next');
+      console.log('As APIs estão rodando, mas o front-end Next.js não será iniciado automaticamente.');
+      console.log('Para iniciar o front-end manualmente, abra outro terminal e execute: npm run dev');
+      return null;
+    }
+    
+    // Em sistemas Windows, usar o arquivo .cmd
+    const isWindows = process.platform === 'win32';
+    const nextExecutable = isWindows ? 
+      path.join(process.cwd(), 'node_modules', '.bin', 'next.cmd') : 
+      nextBinPath;
+    
+    // Verificar se existe o executável específico da plataforma
+    if (!fs.existsSync(nextExecutable)) {
+      console.warn(`Executável Next.js não encontrado: ${nextExecutable}`);
+      console.log('As APIs estão rodando, mas o front-end Next.js não será iniciado automaticamente.');
+      return null;
+    }
+    
+    // Iniciar o Next.js
+    const nextProcess = spawn(nextExecutable, ['dev'], {
+      stdio: 'inherit',
+      shell: true,
+      env: { ...process.env, NEXT_TELEMETRY_DISABLED: '1' }
+    });
+    
+    nextProcess.on('close', (code) => {
+      console.log(`Aplicação Next.js encerrada com código ${code}`);
+    });
+    
+    nextProcess.on('error', (err) => {
+      console.error(`Erro ao iniciar Next.js: ${err.message}`);
+      console.log('Continuando com as APIs em execução...');
+    });
+    
+    return nextProcess;
+  } catch (error) {
+    console.error(`Erro ao tentar iniciar Next.js: ${error.message}`);
+    console.log('As APIs estão rodando, mas o front-end Next.js não será iniciado automaticamente.');
+    return null;
+  }
+}
+
 // Função principal
 async function main() {
   try {
@@ -285,24 +337,7 @@ async function main() {
     await new Promise(resolve => setTimeout(resolve, 2000));
     
     // Iniciar a aplicação Next.js
-    console.log('Iniciando aplicação Next.js...');
-    const nextProcess = spawn('npx', ['next', 'dev'], {
-      stdio: 'inherit',
-      env: { ...process.env, NEXT_TELEMETRY_DISABLED: '1' }
-    });
-    
-    nextProcess.on('close', (code) => {
-      console.log(`Aplicação Next.js encerrada com código ${code}`);
-      // Encerrar as APIs quando o Next.js for encerrado
-      pythonApiProcess.kill();
-      nodeApiProcess.kill();
-      process.exit(code);
-    });
-    
-    nextProcess.on('error', (err) => {
-      console.error(`Erro ao iniciar Next.js: ${err.message}`);
-      console.log('Continuando com as APIs em execução...');
-    });
+    const nextProcess = startNextApp();
     
     // Lidar com sinais de encerramento
     process.on('SIGINT', () => {
