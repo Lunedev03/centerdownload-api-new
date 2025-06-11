@@ -25,132 +25,179 @@ if (!fs.existsSync(path.join(process.cwd(), 'app/download'))) {
   console.log(`${colors.info}Pasta app/download criada${colors.reset}`);
 }
 
-// Iniciar API Python (FastAPI)
-const pythonApi = spawn('python', ['-m', 'uvicorn', 'app.main:app_fastapi', '--reload', '--port', '8000'], {
-  cwd: process.cwd(),
-  shell: true,
-  env: { ...process.env, PYTHONIOENCODING: 'utf-8' } // Configurar codificação correta
-});
+// Configurações
+const PYTHON_API_URL = 'http://localhost:8000/api/v1/health';
+const MAX_RETRIES = 30;
+const RETRY_INTERVAL = 2000; // 2 segundos
+const PYTHON_SETUP_SCRIPT = 'setup-python-api.py';
 
-// Iniciar API Node.js (Express)
-const nodeApi = spawn('npm', ['run', 'dev'], {
-  cwd: path.join(process.cwd(), 'api-gateway'),
-  shell: true
-});
+// Verificar se o Python está instalado
+function checkPythonInstallation() {
+  return new Promise((resolve, reject) => {
+    const pythonProcess = spawn('python', ['--version']);
+    
+    pythonProcess.on('error', (err) => {
+      console.error('Erro ao verificar instalação do Python:', err.message);
+      reject(new Error('Python não está instalado ou não está no PATH'));
+    });
+    
+    let pythonVersion = '';
+    pythonProcess.stdout.on('data', (data) => {
+      pythonVersion += data.toString();
+    });
+    
+    pythonProcess.on('close', (code) => {
+      if (code === 0) {
+        console.log(`Python instalado: ${pythonVersion.trim()}`);
+        resolve(true);
+      } else {
+        reject(new Error(`Python não está instalado corretamente (código ${code})`));
+      }
+    });
+  });
+}
 
-// Capturar saída da API Python
-pythonApi.stdout.on('data', (data) => {
-  console.log(`${colors.python}[Python API] ${data.toString().trim()}${colors.reset}`);
-});
+// Executar script de configuração Python
+function setupPythonEnvironment() {
+  return new Promise((resolve, reject) => {
+    console.log('Configurando ambiente Python...');
+    
+    // Verificar se o script existe
+    if (!fs.existsSync(PYTHON_SETUP_SCRIPT)) {
+      console.error(`Script de configuração ${PYTHON_SETUP_SCRIPT} não encontrado`);
+      reject(new Error('Script de configuração não encontrado'));
+      return;
+    }
+    
+    const setupProcess = spawn('python', [PYTHON_SETUP_SCRIPT]);
+    
+    setupProcess.stdout.on('data', (data) => {
+      console.log(`[Python Setup] ${data.toString().trim()}`);
+    });
+    
+    setupProcess.stderr.on('data', (data) => {
+      console.error(`[Python Setup Error] ${data.toString().trim()}`);
+    });
+    
+    setupProcess.on('close', (code) => {
+      if (code === 0) {
+        console.log('Ambiente Python configurado com sucesso');
+        resolve(true);
+      } else {
+        reject(new Error(`Falha ao configurar ambiente Python (código ${code})`));
+      }
+    });
+  });
+}
 
-pythonApi.stderr.on('data', (data) => {
-  console.error(`${colors.error}[Python API Error] ${data.toString().trim()}${colors.reset}`);
-});
-
-// Capturar saída da API Node.js
-nodeApi.stdout.on('data', (data) => {
-  console.log(`${colors.node}[Node API] ${data.toString().trim()}${colors.reset}`);
-});
-
-nodeApi.stderr.on('data', (data) => {
-  console.error(`${colors.error}[Node API Error] ${data.toString().trim()}${colors.reset}`);
-});
-
-// Verificar se as APIs estão online e então iniciar o Next.js
-let pythonApiReady = false;
-let nodeApiReady = false;
-let nextStarted = false;
-let checkAttempt = 0;
-const MAX_CHECK_ATTEMPTS = 30; // Número máximo de tentativas (60 segundos)
-
-// Verificar a cada 2 segundos se ambas as APIs estão online
-const checkInterval = setInterval(async () => {
-  checkAttempt++;
+// Iniciar API Python
+function startPythonApi() {
+  console.log('Iniciando API Python...');
   
-  if (checkAttempt > MAX_CHECK_ATTEMPTS) {
-    console.error(`${colors.error}Tempo máximo de espera excedido. Verificar se as APIs estão funcionando corretamente.${colors.reset}`);
-    pythonApi.kill();
-    nodeApi.kill();
-    clearInterval(checkInterval);
+  const pythonApi = spawn('python', ['-m', 'uvicorn', 'app.main:app_fastapi', '--reload', '--host', '127.0.0.1', '--port', '8000']);
+  
+  pythonApi.stdout.on('data', (data) => {
+    const output = data.toString().trim();
+    console.log(`[Python API] ${output}`);
+  });
+  
+  pythonApi.stderr.on('data', (data) => {
+    const error = data.toString().trim();
+    console.error(`[Python API Error] ${error}`);
+  });
+  
+  pythonApi.on('close', (code) => {
+    console.log(`API Python encerrada com código ${code}`);
     process.exit(1);
+  });
+  
+  return pythonApi;
+}
+
+// Iniciar API Gateway Node.js
+function startNodeApi() {
+  console.log('Iniciando API Gateway Node.js...');
+  
+  const nodeApi = spawn('npm', ['run', 'dev'], { cwd: path.join(process.cwd(), 'api-gateway') });
+  
+  nodeApi.stdout.on('data', (data) => {
+    const output = data.toString().trim();
+    console.log(`[Node API] ${output}`);
+  });
+  
+  nodeApi.stderr.on('data', (data) => {
+    const error = data.toString().trim();
+    console.error(`[Node API Error] ${error}`);
+  });
+  
+  nodeApi.on('close', (code) => {
+    console.log(`API Gateway Node.js encerrada com código ${code}`);
+    process.exit(1);
+  });
+  
+  return nodeApi;
+}
+
+// Verificar se a API Python está disponível
+async function checkPythonApiAvailability(retryCount = 0) {
+  if (retryCount >= MAX_RETRIES) {
+    console.error('Tempo limite excedido aguardando API Python iniciar');
+    return false;
   }
   
   try {
-    // Verificar API Python
-    if (!pythonApiReady) {
-      try {
-        const response = await axios.get('http://localhost:8000/api/v1/health', { timeout: 2000 });
-        if (response.status === 200) {
-          pythonApiReady = true;
-          console.log(`${colors.success}API Python está online!${colors.reset}`);
-        }
-      } catch (error) {
-        if (checkAttempt % 5 === 0) { // Mostrar mensagem a cada 5 tentativas
-          console.log(`${colors.info}Aguardando API Python iniciar... (tentativa ${checkAttempt})${colors.reset}`);
-        }
-      }
-    }
-
-    // Verificar API Node.js
-    if (!nodeApiReady) {
-      try {
-        const response = await axios.get('http://localhost:3001/status', { timeout: 2000 });
-        if (response.status === 200) {
-          nodeApiReady = true;
-          console.log(`${colors.success}API Gateway está online!${colors.reset}`);
-        }
-      } catch (error) {
-        if (checkAttempt % 5 === 0) { // Mostrar mensagem a cada 5 tentativas
-          console.log(`${colors.info}Aguardando API Gateway iniciar... (tentativa ${checkAttempt})${colors.reset}`);
-        }
-      }
-    }
-
-    // Se ambas as APIs estiverem online, iniciar o Next.js
-    if (pythonApiReady && nodeApiReady && !nextStarted) {
-      nextStarted = true;
-      console.log(`${colors.success}Ambas as APIs estão online! Iniciando servidor Next.js...${colors.reset}`);
-      
-      // Esperar um pouco para garantir que as APIs estão completamente inicializadas
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Iniciar o servidor Next.js de desenvolvimento
-      const nextDev = spawn('npx', ['next', 'dev'], {
-        cwd: process.cwd(),
-        shell: true,
-        stdio: 'inherit', // Mostrar a saída diretamente no console
-        env: { 
-          ...process.env,
-          // Aumentar o timeout do Next.js
-          NEXT_TELEMETRY_DISABLED: '1',
-          NODE_OPTIONS: '--max-http-header-size=16384'
-        }
-      });
-
-      nextDev.on('close', (code) => {
-        console.log(`${colors.info}Servidor Next.js encerrado com código ${code}${colors.reset}`);
-        
-        // Encerrar as APIs quando o servidor Next.js for encerrado
-        pythonApi.kill();
-        nodeApi.kill();
-        
-        clearInterval(checkInterval);
-        process.exit(code);
-      });
-
-      // Limpar o intervalo de verificação
-      clearInterval(checkInterval);
+    console.log(`Aguardando API Python iniciar... (tentativa ${retryCount + 1})`);
+    const response = await axios.get(PYTHON_API_URL, { timeout: 5000 });
+    
+    if (response.status === 200) {
+      console.log('API Python está online!');
+      return true;
     }
   } catch (error) {
-    console.error(`${colors.error}Erro ao verificar APIs: ${error.message}${colors.reset}`);
+    // Continuar tentando
   }
-}, 2000);
+  
+  await new Promise(resolve => setTimeout(resolve, RETRY_INTERVAL));
+  return checkPythonApiAvailability(retryCount + 1);
+}
 
-// Tratar sinais de encerramento do processo principal
-process.on('SIGINT', () => {
-  console.log(`${colors.info}Encerrando servidor e APIs...${colors.reset}`);
-  pythonApi.kill();
-  nodeApi.kill();
-  clearInterval(checkInterval);
-  process.exit(0);
-}); 
+// Função principal
+async function main() {
+  try {
+    // Verificar se o Python está instalado
+    await checkPythonInstallation();
+    
+    // Configurar ambiente Python
+    await setupPythonEnvironment();
+    
+    // Iniciar API Python
+    const pythonApiProcess = startPythonApi();
+    
+    // Aguardar API Python iniciar
+    const pythonApiAvailable = await checkPythonApiAvailability();
+    
+    if (!pythonApiAvailable) {
+      console.error('Não foi possível iniciar a API Python. Verifique os logs acima para mais detalhes.');
+      process.exit(1);
+    }
+    
+    // Iniciar API Gateway Node.js
+    const nodeApiProcess = startNodeApi();
+    
+    console.log('API Gateway está online!');
+    
+    // Lidar com sinais de encerramento
+    process.on('SIGINT', () => {
+      console.log('Encerrando processos...');
+      pythonApiProcess.kill();
+      nodeApiProcess.kill();
+      process.exit(0);
+    });
+  } catch (error) {
+    console.error('Erro ao iniciar ambiente de desenvolvimento:', error.message);
+    process.exit(1);
+  }
+}
+
+// Iniciar
+main(); 

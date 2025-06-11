@@ -1,6 +1,81 @@
 # API Central Downloads
 
-Plataforma para download de vídeos de múltiplas plataformas usando arquitetura de microserviços híbridos com Python e Node.js.
+Sistema de download de vídeos composto por uma API Python (FastAPI) e uma API Gateway (Node.js).
+
+## Correções Implementadas
+
+1. **Correção de Dependências Python**
+   - Adicionado script `setup-python-api.py` para instalar as dependências corretas
+   - Corrigido problema com versão do Pydantic (requer 2.0.0 ou superior)
+   - Adicionado diagnóstico de erros de importação
+
+2. **Melhorias no API Gateway**
+   - Implementado sistema de verificação de disponibilidade da API Python
+   - Adicionado mecanismo de retry com backoff exponencial
+   - Melhorado tratamento de erros e respostas padronizadas
+
+3. **Script de Inicialização Aprimorado**
+   - Verificação de instalação do Python
+   - Configuração automática do ambiente Python
+   - Verificação de disponibilidade das APIs antes de prosseguir
+   - Tratamento adequado de sinais de encerramento
+
+## Requisitos
+
+- Node.js 16+
+- Python 3.9+
+- NPM
+- pip
+
+## Como Executar
+
+1. Clone o repositório:
+   ```bash
+   git clone https://github.com/seu-usuario/API-Central-downloads.git
+   cd API-Central-downloads
+   ```
+
+2. Instale as dependências Node.js:
+   ```bash
+   npm install
+   ```
+
+3. Execute o script de inicialização:
+   ```bash
+   npm run dev
+   ```
+
+   Este script irá:
+   - Verificar a instalação do Python
+   - Instalar as dependências Python necessárias
+   - Iniciar a API Python (FastAPI)
+   - Iniciar o API Gateway (Node.js)
+
+## Estrutura do Projeto
+
+- `/app` - API Python (FastAPI)
+- `/api-gateway` - API Gateway (Node.js)
+- `setup-python-api.py` - Script de configuração do ambiente Python
+- `dev-with-api-check.js` - Script de inicialização do ambiente de desenvolvimento
+
+## Endpoints Principais
+
+### API Gateway (http://localhost:3001)
+
+- `GET /api/video/info?url={videoUrl}` - Obter informações do vídeo
+- `GET /api/video/options?url={videoUrl}` - Obter opções de download
+- `POST /api/video/download` - Iniciar download do vídeo
+- `GET /api/video/task/{taskId}` - Verificar status da tarefa
+- `GET /api/download/{taskId}` - Baixar o arquivo processado
+
+### API Python (http://localhost:8000)
+
+- `GET /api/v1/health` - Verificar saúde da API
+- `GET /api/v1/video/info` - Obter informações do vídeo
+- `GET /api/v1/video/options` - Obter opções de download
+- `POST /api/v1/video/download` - Iniciar download do vídeo
+- `GET /api/v1/video/task/{taskId}` - Verificar status da tarefa
+- `GET /api/v1/download/{taskId}` - Baixar o arquivo processado
 
 ## Arquitetura do Projeto
 

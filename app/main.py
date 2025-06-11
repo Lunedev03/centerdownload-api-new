@@ -1,14 +1,23 @@
 # app/main.py - Arquivo principal da aplicação FastAPI
 
-from fastapi import FastAPI, Request, HTTPException, Response, status
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, FileResponse
-import os
-import logging
-import json
-import random
-from typing import Dict, List, Optional, Any
-from app.routes import api_router
+try:
+    from fastapi import FastAPI, Request, HTTPException, Response, status
+    from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.responses import JSONResponse, FileResponse
+    import os
+    import logging
+    import json
+    import random
+    from typing import Dict, List, Optional, Any
+    from app.routes import api_router
+except ImportError as e:
+    import sys
+    print(f"Erro de importação: {e}")
+    print(f"Versão do Python: {sys.version}")
+    print(f"Versão do Pydantic necessária: >=2.0.0")
+    print("Tente instalar a versão correta do pydantic com:")
+    print("pip install pydantic>=2.0.0")
+    sys.exit(1)
 
 # Configurar logging
 logging.basicConfig(

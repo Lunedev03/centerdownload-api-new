@@ -10,6 +10,11 @@ const apiCache = new NodeCache({
   checkperiod: config.cache.checkperiod
 });
 
+// Variável para controlar o status da API Python
+let isPythonApiAvailable = false;
+let lastCheckTime = 0;
+const CHECK_INTERVAL = 30000; // 30 segundos
+
 // Cliente Axios para comunicação com a API Python
 const pythonApiClient = axios.create({
   baseURL: config.pythonApiBaseUrl,
@@ -20,8 +25,72 @@ const pythonApiClient = axios.create({
   }
 });
 
+/**
+ * Verifica se a API Python está disponível
+ * @returns {Promise<boolean>} - Status da API Python
+ */
+async function checkPythonApiAvailability() {
+  const now = Date.now();
+  
+  // Evitar verificações muito frequentes
+  if (now - lastCheckTime < CHECK_INTERVAL) {
+    return isPythonApiAvailable;
+  }
+  
+  lastCheckTime = now;
+  
+  try {
+    const response = await axios.get(`${config.pythonApiBaseUrl}/health`, { 
+      timeout: 5000 
+    });
+    
+    if (response.status === 200) {
+      if (!isPythonApiAvailable) {
+        logger.info('API Python está disponível novamente');
+      }
+      isPythonApiAvailable = true;
+      return true;
+    }
+    
+    isPythonApiAvailable = false;
+    logger.error('API Python respondeu, mas com status incorreto:', response.status);
+    return false;
+  } catch (error) {
+    isPythonApiAvailable = false;
+    logger.error('API Python não está disponível:', error.message);
+    return false;
+  }
+}
+
+// Verificar disponibilidade da API Python ao iniciar
+checkPythonApiAvailability()
+  .then(available => {
+    if (available) {
+      logger.info('API Python está disponível');
+    } else {
+      logger.warn('API Python não está disponível. Tentando novamente mais tarde...');
+    }
+  })
+  .catch(error => {
+    logger.error('Erro ao verificar disponibilidade da API Python:', error.message);
+  });
+
 // Interceptor para logar requisições
-pythonApiClient.interceptors.request.use(request => {
+pythonApiClient.interceptors.request.use(async request => {
+  // Verificar disponibilidade antes de fazer requisição
+  if (!isPythonApiAvailable && !(await checkPythonApiAvailability())) {
+    return Promise.reject({
+      response: {
+        status: StatusCodes.SERVICE_UNAVAILABLE,
+        data: {
+          success: false,
+          message: 'Serviço Python temporariamente indisponível',
+          error: 'SERVICE_UNAVAILABLE'
+        }
+      }
+    });
+  }
+  
   logger.debug(`Requisição para API Python: ${request.method.toUpperCase()} ${request.baseURL}${request.url}`);
   return request;
 });
@@ -84,6 +153,12 @@ pythonApiClient.interceptors.response.use(
         }
       };
     }
+    
+    // Marcar API como indisponível em caso de erros de conexão
+    if (!error.response || error.response.status >= 500) {
+      isPythonApiAvailable = false;
+    }
+    
     return Promise.reject(error);
   }
 );
@@ -349,5 +424,6 @@ module.exports = {
   getDownloadOptions,
   startDownload,
   checkTaskStatus,
-  getDownloadUrl
+  getDownloadUrl,
+  checkPythonApiAvailability
 }; 
