@@ -64,49 +64,56 @@ async def health_check():
 @app_fastapi.get("/api/v1/video/info", tags=["Video"])
 async def get_video_info(url: str):
     if not url:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="URL não fornecida"
-        )
-    
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="URL não fornecida")
+
     logger.info(f"Solicitando informações para URL: {url}")
-    
-    # Implementação futura - por enquanto retorna dados de exemplo
-    return {
-        "success": True,
-        "data": {
-            "title": "Vídeo de exemplo",
-            "thumbnailUrl": "https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=600&auto=format&fit=crop",
-            "duration": "10:24",
-            "author": "Canal de Exemplo",
-            "viewCount": "1.2M"
+    from yt_dlp import YoutubeDL
+
+    try:
+        with YoutubeDL({"skip_download": True}) as ydl:
+            info = ydl.extract_info(url, download=False)
+
+        return {
+            "success": True,
+            "data": {
+                "title": info.get("title"),
+                "thumbnailUrl": info.get("thumbnail"),
+                "duration": info.get("duration"),
+                "author": info.get("uploader"),
+                "viewCount": info.get("view_count")
+            },
         }
-    }
+    except Exception as exc:
+        logger.error(f"Erro ao obter informações: {exc}")
+        raise HTTPException(status_code=500, detail="Falha ao obter informações do vídeo")
 
 @app_fastapi.get("/api/v1/video/options", tags=["Video"])
 async def get_video_options(url: str):
     if not url:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="URL não fornecida"
-        )
-    
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="URL não fornecida")
+
     logger.info(f"Solicitando opções de download para URL: {url}")
-    
-    # Implementação futura - por enquanto retorna dados de exemplo com tamanhos em bytes
-    # Os tamanhos são fornecidos como números (bytes) para serem processados pelo frontend e API Gateway
-    return {
-        "success": True,
-        "data": [
-            {"quality": "4K", "format": "MP4", "size": 2256000000, "type": "video"},  # ~2.1 GB
-            {"quality": "1080p", "format": "MP4", "size": 891289600, "type": "video", "recommended": True},  # ~850 MB
-            {"quality": "720p", "format": "MP4", "size": 471859200, "type": "video"},  # ~450 MB
-            {"quality": "480p", "format": "MP4", "size": 262144000, "type": "video"},  # ~250 MB
-            {"quality": "360p", "format": "MP4", "size": 157286400, "type": "video"},  # ~150 MB
-            {"quality": "High", "format": "MP3", "size": 8388608, "type": "audio", "recommended": True},  # ~8 MB
-            {"quality": "Medium", "format": "MP3", "size": 5242880, "type": "audio"}  # ~5 MB
+
+    from yt_dlp import YoutubeDL
+
+    try:
+        with YoutubeDL({"skip_download": True}) as ydl:
+            info = ydl.extract_info(url, download=False)
+        formats = [
+            {
+                "format_id": f.get("format_id"),
+                "ext": f.get("ext"),
+                "filesize": f.get("filesize"),
+                "format_note": f.get("format_note"),
+                "video_codec": f.get("vcodec"),
+                "audio_codec": f.get("acodec"),
+            }
+            for f in info.get("formats", []) if f.get("filesize")
         ]
-    }
+        return {"success": True, "data": formats}
+    except Exception as exc:
+        logger.error(f"Erro ao obter opções: {exc}")
+        raise HTTPException(status_code=500, detail="Falha ao obter opções")
 
 @app_fastapi.post("/api/v1/video/download", tags=["Video"])
 async def start_download(request: Request):
@@ -126,17 +133,11 @@ async def start_download(request: Request):
             )
         
         logger.info(f"Iniciando download para URL: {url}")
-        
-        # Implementação futura - por enquanto retorna dados de exemplo
-        task_id = f"mock-task-{abs(hash(url)) % 10000}"
-        
-        return {
-            "success": True,
-            "data": {
-                "task_id": task_id,
-                "status": "pending"
-            }
-        }
+
+        from app.tasks.download_tasks import processar_download_video
+        result = processar_download_video.delay({"video_url": url})
+
+        return {"success": True, "data": {"task_id": result.id, "status": "pending"}}
     except json.JSONDecodeError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
